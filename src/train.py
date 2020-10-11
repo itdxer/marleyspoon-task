@@ -8,7 +8,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
 from sklearn.compose import ColumnTransformer
 from sklearn.feature_extraction.text import TfidfVectorizer
-from category_encoders.ordinal import OrdinalEncoder
+from category_encoders import OrdinalEncoder
 
 from utils import rmse, tag_tokenizer, timeseries_cross_validation
 
@@ -26,15 +26,14 @@ NUMERICAL_FEATURES = [
     "fat",
     "carbs",
     "calories",
-    # "count",
+    "n_products",
 ]
 TEXT_FEATURES = ["recipe_name"]
 TAGS_FEATURES = [
-    "protein_types",
     "meta_tags",
     "carbs_content",
-    "cuisine",
 ]
+from sklearn.ensemble import RandomForestRegressor
 model = Pipeline([
     ("feature_preprocessor", ColumnTransformer([
         # Note: Oridnal encoding works quite well for the models based on decision trees
@@ -43,10 +42,8 @@ model = Pipeline([
         ("numerical", "passthrough", NUMERICAL_FEATURES),
         ("recipe_name_tfidf", TfidfVectorizer(min_df=50, stop_words="english"), "recipe_name"),
 
-        # ("protein_types_tfidf", TfidfVectorizer(min_df=50, tokenizer=tag_tokenizer), "protein_types"),
         ("meta_tags_tfidf", TfidfVectorizer(min_df=40, tokenizer=tag_tokenizer), "meta_tags"),
         ("carbs_content_tfidf", TfidfVectorizer(min_df=40, tokenizer=tag_tokenizer), "carbs_content"),
-        # ("cuisine_tfidf", TfidfVectorizer(min_df=30, tokenizer=tag_tokenizer), "cuisine"),
     ])),
     ("regressor", lightgbm.LGBMRegressor(
         n_estimators=300,
@@ -74,6 +71,16 @@ def clean_data(df):
         lambda year_week: datetime.datetime.strptime(year_week + "-1", "%G%V-%u")
     )
     df[TAGS_FEATURES] = df[TAGS_FEATURES].fillna("")
+    df = df.merge(
+        (df
+            .groupby("year_week")
+            .agg({"recipe_id": "count"})
+            .rename(columns={"recipe_id": "n_products"})
+        ),
+        how="left",
+        left_on="year_week",
+        right_index=True,
+    )
 
     do_sanity_checks(df)
     return df
@@ -91,12 +98,14 @@ def parse_args():
         "-nw",
         "--n-val-weeks",
         default=8,
+        type=int,
         help="Number of weeks used for validation",
     )
     parser.add_argument(
         "-nf",
         "--n-cv-folds",
         default=4,
+        type=int,
         help="Number of weeks used for validation",
     )
     parser.add_argument(
@@ -124,30 +133,4 @@ if __name__ == "__main__":
     df = pd.read_csv(args.input_csv, dtype={"year_week": str, "recipe_id": str})
     df_clean = clean_data(df)
 
-    timeseries_cross_validation(df, model, n_folds=args.n_cv_folds, n_val_weeks=args.n_val_weeks)
-
-    # date_start = "201936"
-    # date_end = "201944"
-    # #
-    # # date_start = "201928"
-    # # date_end = "201936"
-    # #
-    # # date_start = "201920"
-    # # date_end = "201928"
-    #
-    # df_train = df_clean[df_clean.year_week <= date_start]
-    # df_val = df_clean[(df_clean.year_week > date_start) & (df_clean.year_week <= date_end)]
-    #
-    # print(f"Number of training samples: {len(df_train)}")
-    # print(f"Number of validation samples: {len(df_val)}")
-    #
-    # assert len(df_val.year_week.unique()) == args.n_val_weeks
-    #
-    #
-    # print("Training the model on all of the data...")
-    # model.fit(
-    #     df,
-    #     df.sales,
-    #     # Note: sample_weight helps to add more importance to the most recent obsevations
-    #     regressor__sample_weight=((df.week_day - df.week_day.min()).dt.days + 1) ** 4,
-    # )
+    timeseries_cross_validation(df_clean, model, n_folds=args.n_cv_folds, n_val_weeks=args.n_val_weeks)

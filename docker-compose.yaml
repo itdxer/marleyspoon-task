@@ -13,6 +13,8 @@ services:
       --input-csv /home/project/data/train_data_cleaned.csv
       --output-model /home/project/models/model.joblib
       --output-test-pred /home/project/data/test_predictions.csv
+      --n-val-weeks 8
+      --n-cv-folds 4
     volumes:
       - .:/home/project
 
