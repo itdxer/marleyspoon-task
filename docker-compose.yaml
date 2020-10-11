@@ -1,0 +1,32 @@
+version: "3.4"
+
+services:
+  marleyspoon-task-main-image:
+    build: .
+    image: marleyspoon-task
+
+  train-model:
+    image: marleyspoon-task
+    depends_on:
+      - marleyspoon-task-main-image
+    command: python src/train.py
+      --input-csv /home/project/data/dataset.csv
+      --output-model /home/project/models/model.joblib
+      --output-test-pred /home/project/data/test_predictions.csv
+    volumes:
+      - .:/home/project
+
+  notebook:
+    image: marleyspoon-task
+    depends_on:
+      - marleyspoon-task-main-image
+    command: jupyter notebook
+      --notebook-dir=/home/project/notebooks
+      --ip 0.0.0.0
+      --no-browser
+      --allow-root
+      --port 8899
+    ports:
+      - "8899:8899"
+    volumes:
+      - .:/home/project
