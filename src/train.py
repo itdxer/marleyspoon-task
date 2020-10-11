@@ -1,11 +1,16 @@
+import datetime
 import argparse
 
-
+import lightgbm
+import numpy as np
+import pandas as pd
+from sklearn.pipeline import Pipeline
+from sklearn.impute import SimpleImputer
 from sklearn.compose import ColumnTransformer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from category_encoders.ordinal import OrdinalEncoder
 
-from utils import rmse
+from utils import rmse, tag_tokenizer, timeseries_cross_validation
 
 
 CATEGORICAL_FEATURES = [
@@ -21,11 +26,10 @@ NUMERICAL_FEATURES = [
     "fat",
     "carbs",
     "calories",
-    "count",
-    "cumcount",
+    # "count",
 ]
-TEXT_FEATURES = [
-    "recipe_name_clean",
+TEXT_FEATURES = ["recipe_name"]
+TAGS_FEATURES = [
     "protein_types",
     "meta_tags",
     "carbs_content",
@@ -38,8 +42,13 @@ model = Pipeline([
         # Numerical features will be passed through the model without any changes
         ("numerical", "passthrough", NUMERICAL_FEATURES),
         ("recipe_name_tfidf", TfidfVectorizer(min_df=50, stop_words="english"), "recipe_name"),
+
+        # ("protein_types_tfidf", TfidfVectorizer(min_df=50, tokenizer=tag_tokenizer), "protein_types"),
+        ("meta_tags_tfidf", TfidfVectorizer(min_df=40, tokenizer=tag_tokenizer), "meta_tags"),
+        ("carbs_content_tfidf", TfidfVectorizer(min_df=40, tokenizer=tag_tokenizer), "carbs_content"),
+        # ("cuisine_tfidf", TfidfVectorizer(min_df=30, tokenizer=tag_tokenizer), "cuisine"),
     ])),
-    ("classifier", lightgbm.LGBMRegressor(
+    ("regressor", lightgbm.LGBMRegressor(
         n_estimators=300,
         num_leaves=7,
         max_depth=3,
@@ -52,7 +61,7 @@ model = Pipeline([
 ])
 
 
-def run_sanity_checks(df):
+def do_sanity_checks(df):
     # Sanity check, making sure that there is always constant distance between week days (7 days)
     weekdays = sorted(df["week_day"].unique())
     assert len(np.unique(np.diff(weekdays))) == 1
@@ -62,9 +71,11 @@ def clean_data(df):
     df["week_day"] = df.year_week.apply(
         # Note: additional -1 indicates that we always pick Monday as the starting day of
         # the week, otherwise logic doesn't work
-        lambda year_week: datetime.datetime.strptime(year_week + '-1', "%G%V-%u")
+        lambda year_week: datetime.datetime.strptime(year_week + "-1", "%G%V-%u")
     )
-    run_sanity_checks(df)
+    df[TAGS_FEATURES] = df[TAGS_FEATURES].fillna("")
+
+    do_sanity_checks(df)
     return df
 
 
@@ -77,16 +88,22 @@ def parse_args():
         help="Path to the CSV file contains training data. e.g. /home/data/train.csv",
     )
     parser.add_argument(
-        "-n",
+        "-nw",
         "--n-val-weeks",
         default=8,
+        help="Number of weeks used for validation",
+    )
+    parser.add_argument(
+        "-nf",
+        "--n-cv-folds",
+        default=4,
         help="Number of weeks used for validation",
     )
     parser.add_argument(
         "-om",
         "--output-model",
         required=True,
-        help="Path to the file where trained model will be stored. e.g. /home/models/classifier.joblib",
+        help="Path to the file where trained model will be stored. e.g. /home/models/regressor.joblib",
     )
     parser.add_argument(
         "-ot",
@@ -103,22 +120,34 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
 
+    print("Reading the data...")
     df = pd.read_csv(args.input_csv, dtype={"year_week": str, "recipe_id": str})
     df_clean = clean_data(df)
 
-    date_start = "201936"
-    date_end = "201944"
+    timeseries_cross_validation(df, model, n_folds=args.n_cv_folds, n_val_weeks=args.n_val_weeks)
 
-    df_train = df_clean[df_clean.year_week <= date_start]
-    df_val = df_clean[(df_clean.year_week > date_start) & (df_clean.year_week <= date_end)]
-
-    assert len(df_val.year_week.unique()) == args.n_val_weeks
-
-    model.fit(
-        df_train,
-        df_train.sales,
-        # Note: sample_weight helps to add more importance to the most recent obsevations
-        sample_weight=((df_train.week_day - df_train.week_day.min()).dt.days + 1) ** 4,
-    )
-    y_predicted = np.clip(model.predict(df_val), 0, np.inf)
-    print(f"RMSE: {rmse(df_val.sales, y_predicted)}")
+    # date_start = "201936"
+    # date_end = "201944"
+    # #
+    # # date_start = "201928"
+    # # date_end = "201936"
+    # #
+    # # date_start = "201920"
+    # # date_end = "201928"
+    #
+    # df_train = df_clean[df_clean.year_week <= date_start]
+    # df_val = df_clean[(df_clean.year_week > date_start) & (df_clean.year_week <= date_end)]
+    #
+    # print(f"Number of training samples: {len(df_train)}")
+    # print(f"Number of validation samples: {len(df_val)}")
+    #
+    # assert len(df_val.year_week.unique()) == args.n_val_weeks
+    #
+    #
+    # print("Training the model on all of the data...")
+    # model.fit(
+    #     df,
+    #     df.sales,
+    #     # Note: sample_weight helps to add more importance to the most recent obsevations
+    #     regressor__sample_weight=((df.week_day - df.week_day.min()).dt.days + 1) ** 4,
+    # )

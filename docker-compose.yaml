@@ -10,7 +10,7 @@ services:
     depends_on:
       - marleyspoon-task-main-image
     command: python src/train.py
-      --input-csv /home/project/data/dataset.csv
+      --input-csv /home/project/data/train_data_cleaned.csv
       --output-model /home/project/models/model.joblib
       --output-test-pred /home/project/data/test_predictions.csv
     volumes:
