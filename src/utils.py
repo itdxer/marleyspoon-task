@@ -52,7 +52,7 @@ def timeseries_cross_validation(df, model, n_folds, n_val_weeks):
 
         print("  Training the model...")
         model.fit(df_train, df_train.sales, regressor__sample_weight=estimate_sample_weights(df_train))
-        y_predicted = np.clip(model.predict(df_val), 0, np.inf)
+        y_predicted = np.clip(model.predict(df_val), 0, np.inf).astype(int)
         error = rmse(df_val.sales, y_predicted)
 
         print(f"  RMSE: {error:.2f}")

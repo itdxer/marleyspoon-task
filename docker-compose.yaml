@@ -28,8 +28,8 @@ services:
       --ip 0.0.0.0
       --no-browser
       --allow-root
-      --port 8899
+      --port 8989
     ports:
-      - "8899:8899"
+      - "8989:8989"
     volumes:
       - .:/home/project

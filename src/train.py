@@ -20,6 +20,7 @@ CATEGORICAL_FEATURES = [
     "protein_cuts",
     "heat_level",
     "difficulty",
+    "preferences",
 ]
 NUMERICAL_FEATURES = [
     "proteins",
@@ -70,6 +71,7 @@ def do_sanity_checks(df):
 
 def read_and_clean_data(csv_file_path):
     df = pd.read_csv(csv_file_path, dtype={"year_week": str, "recipe_id": str})
+
     df["week_day"] = df.year_week.apply(
         # Note: additional -1 indicates that we always pick Monday as the starting day of
         # the week, otherwise logic doesn't work
@@ -153,7 +155,7 @@ if __name__ == "__main__":
     print(f"Saved in {args.output_model}")
 
     print("Generating predictions for the test data...")
-    y_predicted = np.clip(model.predict(df_test_clean), 0, np.inf)
+    y_predicted = np.clip(model.predict(df_test_clean), 0, np.inf).astype(int)
     df_test_results = pd.DataFrame({
         "recipe_id": df_test_clean.recipe_id,
         "year_week": df_test_clean.year_week,
