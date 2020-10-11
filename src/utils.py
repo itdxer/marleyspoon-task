@@ -11,6 +11,12 @@ def tag_tokenizer(tags):
     return tags.replace(",", " ").split(" ")
 
 
+def estimate_sample_weights(df):
+    # Note 1: sample_weight helps to add more importance to the most recent obsevations
+    # Note 2: Rasing weight to the positive power helps to increase importance of the most recent data
+    return ((df.week_day - df.week_day.min()).dt.days + 1) ** 4
+
+
 def timeseries_cross_validation(df, model, n_folds, n_val_weeks):
     assert n_folds >= 1, f"n_folds={n_folds}"
     assert n_val_weeks >= 1, f"n_val_weeks={n_val_weeks}"
@@ -41,12 +47,7 @@ def timeseries_cross_validation(df, model, n_folds, n_val_weeks):
         assert len(df_val.year_week.unique()) == n_val_weeks
 
         print("  Training the model...")
-        model.fit(
-            df_train,
-            df_train.sales,
-            # Note: sample_weight helps to add more importance to the most recent obsevations
-            regressor__sample_weight=((df_train.week_day - df_train.week_day.min()).dt.days + 1) ** 4,
-        )
+        model.fit(df_train, df_train.sales, regressor__sample_weight=estimate_sample_weights(df_train))
         y_predicted = np.clip(model.predict(df_val), 0, np.inf)
         error = rmse(df_val.sales, y_predicted)
 

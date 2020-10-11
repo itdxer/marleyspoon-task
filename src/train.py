@@ -4,13 +4,14 @@ import argparse
 import lightgbm
 import numpy as np
 import pandas as pd
+from joblib import dump
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
 from sklearn.compose import ColumnTransformer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from category_encoders import OrdinalEncoder
 
-from utils import rmse, tag_tokenizer, timeseries_cross_validation
+from utils import rmse, tag_tokenizer, timeseries_cross_validation, estimate_sample_weights
 
 
 CATEGORICAL_FEATURES = [
@@ -33,7 +34,6 @@ TAGS_FEATURES = [
     "meta_tags",
     "carbs_content",
 ]
-from sklearn.ensemble import RandomForestRegressor
 model = Pipeline([
     ("feature_preprocessor", ColumnTransformer([
         # Note: Oridnal encoding works quite well for the models based on decision trees
@@ -64,7 +64,8 @@ def do_sanity_checks(df):
     assert len(np.unique(np.diff(weekdays))) == 1
 
 
-def clean_data(df):
+def read_and_clean_data(csv_file_path):
+    df = pd.read_csv(csv_file_path, dtype={"year_week": str, "recipe_id": str})
     df["week_day"] = df.year_week.apply(
         # Note: additional -1 indicates that we always pick Monday as the starting day of
         # the week, otherwise logic doesn't work
@@ -89,10 +90,14 @@ def clean_data(df):
 def parse_args():
     parser = argparse.ArgumentParser(description="Training production model")
     parser.add_argument(
-        "-i",
-        "--input-csv",
+        "--input-train-csv",
         required=True,
         help="Path to the CSV file contains training data. e.g. /home/data/train.csv",
+    )
+    parser.add_argument(
+        "--input-test-csv",
+        required=True,
+        help="Path to the CSV file contains test data. e.g. /home/data/train.csv",
     )
     parser.add_argument(
         "-nw",
@@ -129,8 +134,26 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
 
-    print("Reading the data...")
-    df = pd.read_csv(args.input_csv, dtype={"year_week": str, "recipe_id": str})
-    df_clean = clean_data(df)
+    print("Reading the train and test data...")
+    df_train_clean = read_and_clean_data(args.input_train_csv)
+    df_test_clean = read_and_clean_data(args.input_test_csv)
 
-    timeseries_cross_validation(df_clean, model, n_folds=args.n_cv_folds, n_val_weeks=args.n_val_weeks)
+    print("Running cross validation...")
+    timeseries_cross_validation(df_train_clean, model, n_folds=args.n_cv_folds, n_val_weeks=args.n_val_weeks)
+
+    print("Training the model on all training data...")
+    model.fit(df_train_clean, df_train_clean.sales, regressor__sample_weight=estimate_sample_weights(df_train_clean))
+
+    print("Saving trained production model...")
+    dump(model, args.output_model)
+    print(f"Saved in {args.output_model}")
+
+    print("Generating predictions for the test data...")
+    y_predicted = np.clip(model.predict(df_test_clean), 0, np.inf)
+    df_test_results = pd.DataFrame({
+        "recipe_id": df_test_clean.recipe_id,
+        "year_week": df_test_clean.year_week,
+        "predicted_sales": y_predicted,
+    })
+    df_test_results.to_csv(args.output_test_pred, index=None)
+    print(f"Saved predictions in {args.output_test_pred}")

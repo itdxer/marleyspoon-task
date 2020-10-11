@@ -10,7 +10,8 @@ services:
     depends_on:
       - marleyspoon-task-main-image
     command: python src/train.py
-      --input-csv /home/project/data/train_data_cleaned.csv
+      --input-train-csv /home/project/data/train_data_cleaned.csv
+      --input-test-csv /home/project/data/test_data_cleaned.csv
       --output-model /home/project/models/model.joblib
       --output-test-pred /home/project/data/test_predictions.csv
       --n-val-weeks 8
