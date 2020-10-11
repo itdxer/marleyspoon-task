@@ -11,10 +11,6 @@ def tag_tokenizer(tags):
     return tags.replace(",", " ").split(" ")
 
 
-def tag_tokenizer_v2(tags):
-    return tags.replace(",", " ").replace("_", " ").split(" ")
-
-
 def estimate_sample_weights(df):
     # Note 1: sample_weight helps to add more importance to the most recent obsevations
     # Note 2: Rasing weight to the positive power helps to increase importance of the most recent data
