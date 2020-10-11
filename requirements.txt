@@ -7,3 +7,4 @@ jupyter_contrib_nbextensions==0.5.1
 matplotlib==3.3.2
 category_encoders==2.2.2
 lightgbm==3.0.0
+tqdm==4.50.2

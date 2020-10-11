@@ -16,10 +16,10 @@ from utils import rmse, tag_tokenizer, timeseries_cross_validation, estimate_sam
 
 CATEGORICAL_FEATURES = [
     "product_type",
-    "course_type",
     "dish_type",
     "protein_cuts",
     "heat_level",
+    "difficulty",
 ]
 NUMERICAL_FEATURES = [
     "proteins",
@@ -29,10 +29,13 @@ NUMERICAL_FEATURES = [
     "calories",
     "n_products",
 ]
-TEXT_FEATURES = ["recipe_name"]
+TEXT_FEATURES = [
+    "recipe_name",
+]
 TAGS_FEATURES = [
     "meta_tags",
     "carbs_content",
+    "dish_types",
 ]
 model = Pipeline([
     ("feature_preprocessor", ColumnTransformer([
@@ -40,18 +43,19 @@ model = Pipeline([
         ("categorical", OrdinalEncoder(handle_missing="return_nan"), CATEGORICAL_FEATURES),
         # Numerical features will be passed through the model without any changes
         ("numerical", "passthrough", NUMERICAL_FEATURES),
-        ("recipe_name_tfidf", TfidfVectorizer(min_df=50, stop_words="english"), "recipe_name"),
 
-        ("meta_tags_tfidf", TfidfVectorizer(min_df=40, tokenizer=tag_tokenizer), "meta_tags"),
-        ("carbs_content_tfidf", TfidfVectorizer(min_df=40, tokenizer=tag_tokenizer), "carbs_content"),
+        ("recipe_name_tfidf", TfidfVectorizer(min_df=50, stop_words="english"), "recipe_name"),
+        ("meta_tags_tfidf", TfidfVectorizer(min_df=50), "meta_tags"),
+        ("carbs_content_tfidf", TfidfVectorizer(min_df=50), "carbs_content"),
     ])),
     ("regressor", lightgbm.LGBMRegressor(
         n_estimators=300,
-        num_leaves=7,
-        max_depth=3,
-        objective="rmse",
+        objective="mse",
+        num_leaves=10,
+        max_depth=4,
+        min_child_samples=60,
         learning_rate=0.02,
-        colsample_bytree=0.5,
+        colsample_bytree=0.6,
         verbosity=-1,
         extra_trees=True,
     )),
@@ -71,7 +75,7 @@ def read_and_clean_data(csv_file_path):
         # the week, otherwise logic doesn't work
         lambda year_week: datetime.datetime.strptime(year_week + "-1", "%G%V-%u")
     )
-    df[TAGS_FEATURES] = df[TAGS_FEATURES].fillna("")
+    df[TAGS_FEATURES + ["dish_type"]] = df[TAGS_FEATURES + ["dish_type"]].fillna("unk")
     df = df.merge(
         (df
             .groupby("year_week")
